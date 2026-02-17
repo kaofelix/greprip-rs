@@ -1,0 +1,8 @@
+Hello World
+hello world
+HELLO WORLD
+This line contains foo
+Another line with FOO here
+nothing special
+foo bar baz
+The quick brown fox

@@ -1,0 +1,17 @@
+[package]
+name = "greprip"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "grg"
+path = "src/bin/grg.rs"
+
+[[bin]]
+name = "fnd"
+path = "src/bin/fnd.rs"
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"
