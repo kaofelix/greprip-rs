@@ -4,7 +4,7 @@ use std::ffi::OsString;
 pub fn translate_find_args(args: &[&str]) -> Vec<OsString> {
     let mut result = Vec::new();
     let mut paths = Vec::new();
-    let mut pattern = None;
+    let mut patterns = Vec::new();  // Support multiple patterns (for OR operations)
     let mut exec_args = Vec::new();
     let mut i = 0;
 
@@ -24,21 +24,17 @@ pub fn translate_find_args(args: &[&str]) -> Vec<OsString> {
             }
         }
 
-        // -name PATTERN → -g PATTERN (glob)
+        // -name PATTERN → collect pattern for later (might be OR'd)
         if arg == "-name" && i + 1 < args.len() {
-            pattern = Some(args[i + 1]);
-            result.push(OsString::from("-g"));
-            result.push(OsString::from(args[i + 1]));
+            patterns.push(args[i + 1]);
             i += 2;
             continue;
         }
 
-        // -iname PATTERN → -i -g PATTERN (case insensitive glob)
+        // -iname PATTERN → -i option + collect pattern
         if arg == "-iname" && i + 1 < args.len() {
-            pattern = Some(args[i + 1]);
-            result.push(OsString::from("-i"));
-            result.push(OsString::from("-g"));
-            result.push(OsString::from(args[i + 1]));
+            result.push(OsString::from("-i"));  // Add case-insensitive flag once
+            patterns.push(args[i + 1]);
             i += 2;
             continue;
         }
@@ -165,8 +161,22 @@ pub fn translate_find_args(args: &[&str]) -> Vec<OsString> {
     }
 
     // fd requires a pattern - if none specified via -name/-iname, use "." (match all)
-    if pattern.is_none() {
+    if patterns.is_empty() {
+        // No patterns specified, use "." to match all
         result.push(OsString::from("."));
+    } else {
+        // Handle one or more patterns
+        if patterns.len() == 1 {
+            // Single pattern, use directly
+            result.push(OsString::from("-g"));
+            result.push(OsString::from(&patterns[0]));
+        } else {
+            // Multiple patterns - use brace expansion
+            // Convert to {p1,p2,p3} format
+            let brace_pattern = format!("{{{}}}", patterns.join(","));
+            result.push(OsString::from("-g"));
+            result.push(OsString::from(brace_pattern));
+        }
     }
 
     // Add paths (fd takes paths after pattern/options, but before -x/-X)
@@ -313,5 +323,52 @@ mod tests {
     fn test_follow_symlinks() {
         let result = translate(&["-L", ".", "-name", "*.txt"]);
         assert!(result.contains(&"-L".to_string()));
+    }
+
+    #[test]
+    fn test_simple_or_patterns() {
+        // find . -name "a" -o -name "b" -o -name "c"
+        // Should translate to fd -g {a,b,c} .
+        let result = translate(&[
+            ".",
+            "-name",
+            ".ruby-version",
+            "-o",
+            "-name",
+            ".tool-versions",
+            "-o",
+            "-name",
+            "mise.toml",
+        ]);
+
+        let joined = result.join(" ");
+        // Should use brace expansion pattern
+        assert!(joined.contains('{'));
+        // Should contain all the patterns
+        assert!(joined.contains(".ruby-version"));
+        assert!(joined.contains(".tool-versions"));
+        assert!(joined.contains("mise.toml"));
+    }
+
+    #[test]
+    fn test_or_with_path_and_maxdepth() {
+        // find /path -maxdepth 3 -name "a" -o -name "b"
+        let result = translate(&[
+            "/path",
+            "-maxdepth",
+            "3",
+            "-name",
+            ".ruby-version",
+            "-o",
+            "-name",
+            ".tool-versions",
+        ]);
+
+        let joined = result.join(" ");
+        assert!(joined.contains("/path"));
+        assert!(joined.contains("-d") || joined.contains("--max-depth"));
+        assert!(joined.contains('{'));
+        assert!(joined.contains(".ruby-version"));
+        assert!(joined.contains(".tool-versions"));
     }
 }
