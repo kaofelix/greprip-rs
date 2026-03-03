@@ -371,4 +371,28 @@ mod tests {
         assert!(joined.contains(".ruby-version"));
         assert!(joined.contains(".tool-versions"));
     }
+
+    #[test]
+    fn test_or_with_parentheses() {
+        // find . -type f \( -name "*.ts" -o -name "*.tsx" \)
+        // Parentheses should be ignored, patterns combined
+        let result = translate(&[
+            ".",
+            "-type",
+            "f",
+            "(",
+            "-name",
+            "*.ts",
+            "-o",
+            "-name",
+            "*.tsx",
+            ")",
+        ]);
+
+        let joined = result.join(" ");
+        assert!(joined.contains("-t"));
+        assert!(joined.contains('{'));  // Brace expansion
+        assert!(joined.contains("*.ts"));
+        assert!(joined.contains("*.tsx"));
+    }
 }
